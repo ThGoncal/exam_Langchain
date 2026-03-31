@@ -2,221 +2,277 @@
 
 ## Consignes générales
 
-L’examen a pour objectif de développer un assistant intelligent capable d’analyser du code Python, de générer automatiquement des tests unitaires avec pytest, et d’expliquer ces tests de manière pédagogique.
+L'examen a pour objectif de développer un assistant intelligent capable d'analyser du code Python, de générer automatiquement des tests unitaires avec `pytest`, et d'expliquer ces tests de manière pédagogique.
 
-Pour y parvenir, vous devrez mettre en place une architecture complète combinant plusieurs outils : 
+Pour y parvenir, vous devrez mettre en place une architecture complète combinant plusieurs outils :
 
-- **LangChain** pour gérer les chaînes, les prompts, les parsers et la mémoire
-- **FastAPI** pour exposer les fonctionnalités à travers une API sécurisée
-- **Docker** avec un **Makefile** afin de conteneuriser et d’orchestrer l’ensemble du projet. 
-- Une interface utilisateur avec **Streamlit** peut être ajoutée en complément, mais elle reste OPTIONELLE.
+- **LangChain** pour gérer les chaînes, les prompts, les schémas structurés et la mémoire
+- **FastAPI** pour exposer les fonctionnalités à travers une API
+- **Docker** avec un **Makefile** afin de conteneuriser et d'orchestrer l'ensemble du projet
+- une interface utilisateur avec **Streamlit** peut être ajoutée en complément, mais elle reste optionnelle
 
-Pour réaliser cet examen, un [répertoire GitHub](https://github.com/DataScientest/exam_Langchain) vous est mis à disposition. La première étape consiste à cloner ce dépôt sur votre machine afin de disposer de toute la structure de projet attendue (dossiers, fichiers de configuration, Makefile, etc.). 
+Pour réaliser cet examen, un répertoire GitHub vous est mis à disposition :
+[langchain_examen](https://github.com/DataScientest/exam_Langchain)
 
-Ce dépôt sert de squelette : il vous fournit l’architecture de base que vous devrez compléter en implémentant les différents composants (chaînes LangChain, parsers, mémoire, API, conteneurisation).
+La première étape consiste à cloner ce dépôt sur votre machine afin de disposer de toute la structure de projet attendue.
 
-```txt
-exam_Langchain/                     
-├── .env                             # Variables d'environnement (clés API GROQ + LangSmith)
-├── .python-version                  # Version de Python utilisée (ici 3.13)
-├── pyproject.toml                   # Gestion des dépendances et configuration du projet
-├── Makefile                         # Commandes pour build/up/down les conteneurs
-├── docker-compose.yml               # Orchestration des services (auth, main, streamlit)
-├── README.md                        # Documentation principale du projet
-└── src/                             # Code source du projet
-    ├── api/                         # Dossier regroupant les services API
-    │   ├── authentification/        # Service d’authentification 
-    │   │   ├── Dockerfile.auth      
-    │   │   ├── requirements.txt     
-    │   │   └── auth.py              # Code FastAPI pour gérer signup, login, me
-    │   └── assistant/               # Service principal de l’assistant LangChain
-    │       ├── Dockerfile.main      
-    │       ├── requirements.txt     
-    │       └── main.py              # Code FastAPI pour analyse/génération/tests/chat
-    ├── core/                        # Composants centraux LangChain
-    │   ├── llm.py                   # Configuration du modèle de langage (LLM + fallback)
-    │   ├── chains.py                # Définition des différentes chaînes (analyse, test, etc.)
-    │   └── parsers.py               # Parsers Pydantic pour structurer les sorties du LLM
-    ├── memory/                       
-    │   └── memory.py                # Fonctions pour gérer l’historique multi-utilisateurs
-    ├── prompts/                     
-    │   └── prompts.py               # Prompts pour analyse, génération, explication, chat
-    ├── Dockerfile.streamlit (optionnel)   # Dockerfile pour l’interface utilisateur Streamlit
-    ├── requirements.txt (optionnel)       # Dépendances pour l’app Streamlit
-    └── app.py (optionnel)                  # Application Streamlit pour interagir avec l’assistant
+Ce dépôt sert de squelette : il vous fournit l'architecture de base que vous devrez compléter en implémentant les différents composants.
+
+## Versions de référence
+
+Pour rester aligné avec le cours, vous pouvez partir sur les versions suivantes :
+
+```toml
+langchain = "1.2.12"
+langchain-core = "1.2.20"
+langchain-community = "0.4.1"
+langgraph = "1.1.3"
+langsmith = "0.7.20"
+langchain-groq = "1.1.2"
+langchain-openai = "1.1.11"
+fastapi = "0.116.1"
+uvicorn = "0.35.0"
+python-multipart = "0.0.20"
+pydantic = "2.11.7"
+python-dotenv = "1.1.1"
 ```
 
-L’ensemble des consignes décrites ci-dessous doit être suivi en vous appuyant sur cette structure déjà préparée, que vous enrichirez progressivement pour aboutir à un assistant fonctionnel.
+## Structure du projet
 
-### Le LLM (``src/core/llm.py``)
+```txt
+exam_Langchain/
+├── .env
+├── .python-version
+├── pyproject.toml
+├── Makefile
+├── docker-compose.yml
+├── README.md
+└── src/
+    ├── api/
+    │   ├── authentification/
+    │   │   ├── Dockerfile.auth
+    │   │   ├── requirements.txt
+    │   │   └── auth.py
+    │   └── assistant/
+    │       ├── Dockerfile.main
+    │       ├── requirements.txt
+    │       └── main.py
+    ├── core/
+    │   ├── llm.py
+    │   ├── chains.py
+    │   └── schemas.py
+    ├── memory/
+    │   └── memory.py
+    ├── prompts/
+    │   └── prompts.py
+    ├── Dockerfile.streamlit
+    ├── requirements.txt
+    └── app.py
+```
 
-Le cœur de l’assistant repose sur le modèle de langage (LLM), qui est responsable de la génération et de l’interprétation des réponses. Ce fichier a pour rôle de configurer et d’initialiser le modèle choisi, ainsi que de prévoir une solution de repli en cas de problème.
+L'ensemble des consignes décrites ci-dessous doit être suivi en vous appuyant sur cette structure déjà préparée.
 
-L’implémentation doit inclure :
+### Le LLM (`src/core/llm.py`)
 
-- **Un modèle principal** : c’est le modèle par défaut utilisé pour toutes les requêtes (par exemple un modèle Groq LLaMA 70B).
-- **Une récupération des clés API**: les identifiants et paramètres sensibles doivent être stockés dans le fichier ``.env`` et récupérés dans le code via des variables d’environnement.
+Le coeur de l'assistant repose sur le modèle de langage.
+Ce fichier a pour rôle de configurer et d'initialiser le modèle choisi.
 
-Cette couche d’abstraction permet de séparer clairement la logique métier (chaînes, prompts, parsers) de la configuration du modèle. Ainsi, il est facile de changer de fournisseur ou de modèle sans avoir à modifier l’ensemble du projet.
+L'implémentation doit inclure :
 
-### Les Prompts (src/prompts/prompts.py)
+- un modèle principal, utilisé par défaut pour toutes les requêtes
+- une récupération des clés API depuis le fichier `.env`
 
-Les prompts jouent un rôle central dans l’architecture, car ce sont eux qui définissent la manière dont le modèle doit raisonner et formuler ses réponses. Ils servent d’instructions claires et contraignantes au LLM pour garantir que les sorties soient exploitables.
+Exemple de variables d'environnement :
 
-Dans cet examen, vous devez **mettre en place différents prompts** correspondant aux fonctionnalités attendues de l’assistant :
+```env
+GROQ_API_KEY="your_api_key"
+CHAT_MODEL="groq:llama-3.3-70b-versatile"
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=<your_api_key>
+LANGSMITH_PROJECT=exam_langchain
+```
 
-- **Prompt d’analyse de code** : Demande au LLM d’évaluer un extrait de code Python et de déterminer s’il est optimal. Le modèle doit identifier d’éventuels problèmes (lisibilité, performance, bonnes pratiques manquantes) et proposer des améliorations.
-- **Prompt de génération de tests unitaires** : A partir d’une fonction Python donnée, l’assistant doit produire un test unitaire en pytest. La consigne doit obliger le modèle à répondre avec un contenu structuré, afin de pouvoir extraire le code du test automatiquement.
-- **Prompt d’explication de tests** : Explication pédagogique et détaillée d’un test unitaire. L’assistant doit se comporter comme un professeur et rendre le test compréhensible pour un étudiant ou un développeur débutant.
-- **Prompt de conversation libre** : Discussion naturelle avec l’utilisateur. Ce prompt doit être conçu pour fonctionner avec la mémoire conversationnelle, en intégrant l’historique des échanges afin de donner de la continuité au dialogue.
 
-Chaque prompt doit être construit de façon à toujours produire une réponse en JSON valide, afin de pouvoir être interprétée par les parsers.
+### Les Prompts (`src/prompts/prompts.py`)
 
-> ⚠️ **Attention** : veillez à bien intégrer les variables placeholders (**``{input}``**, **``{format_instructions}``**, etc.) pour que le modèle reçoive les bonnes informations. Pour le chat avec mémoire, l’utilisation de **``MessagesPlaceholder``** est obligatoire afin de transmettre correctement l’historique des conversations au LLM.
+Les prompts jouent un rôle central dans l'architecture.
+Ils définissent la manière dont le modèle doit raisonner et formuler ses réponses.
 
-### Les Parsers (``src/core/parsers.py``)
+Dans cet examen, vous devez mettre en place différents prompts correspondant aux fonctionnalités attendues de l'assistant :
 
-Les parsers constituent une étape essentielle du projet : ils permettent de convertir les réponses brutes du modèle en objets structurés et exploitables. Comme le LLM renvoie du texte, il est indispensable de transformer ces sorties en formats clairs (par exemple JSON) pour pouvoir les manipuler dans l’API et la mémoire.
+- **Prompt d'analyse de code** : demande au LLM d'évaluer un extrait de code Python et de déterminer s'il est optimal. Le modèle doit identifier d'éventuels problèmes et proposer des améliorations.
+- **Prompt de génération de tests unitaires** : à partir d'une fonction Python donnée, l'assistant doit produire un test unitaire en `pytest`.
+- **Prompt d'explication de tests** : explication pédagogique et détaillée d'un test unitaire.
+- **Prompt de conversation libre** : discussion naturelle avec l'utilisateur.
 
-Chaque fonctionnalité de l’assistant est associée à un parser dédié :
+Chaque prompt doit être construit de façon claire, avec les bons placeholders, afin que le modèle reçoive les bonnes informations.
 
-- **Parser d’analyse de code** : Transformer la réponse du modèle en un objet contenant trois informations clés : 
-    - code optimal ou non
-    - une liste des problèmes détectés
-    - une liste des suggestions d’amélioration 
-- **Parser de génération de tests**: Extraire du texte brut uniquement la partie correspondant au code du test unitaire en pytest, sous forme exploitable et directement exécutable.
-- **Parser d’explication de tests** : Convertir la sortie du modèle en une explication claire et pédagogique, sous forme de texte structuré.
+### Les schémas structurés (`src/core/schemas.py`)
 
-Ces parsers doivent être construits avec Pydantic, ce qui garantit :
+Les sorties du modèle doivent être transformées en objets structurés et exploitables.
 
-- Une validation stricte du format attendu.
-- La sérialisation facile en dictionnaires (``.dict()``) pour le retour dans les endpoints.
-- Une robustesse accrue face aux erreurs de format du modèle.
+Dans cet examen, vous pouvez vous appuyer sur des schémas Pydantic, par exemple :
 
-### Les Chaînes (``src/core/chains.py``)
+- `CodeAnalysisResult`
+- `GeneratedTestResult`
+- `TestExplanationResult`
 
-Les chaînes LangChain constituent le cœur logique de l’assistant : elles orchestrent le flux d’information entre les prompts, le modèle de langage et les parsers. Chaque fonctionnalité repose sur une chaîne dédiée, qui définit clairement comment le LLM doit être sollicité et comment sa sortie doit être exploitée.
+Ces schémas doivent permettre :
+
+- une validation du format attendu
+- un retour clair dans les endpoints API
+- une meilleure robustesse face aux erreurs de format du modèle
+
+### Les Chaînes (`src/core/chains.py`)
+
+Les chaînes LangChain constituent le coeur logique de l'assistant.
+Chaque fonctionnalité repose sur une chaîne dédiée.
 
 Vous devez mettre en place plusieurs chaînes :
 
-- **Chaîne d’analyse de code** : Utilise le prompt d’analyse, envoie la requête au LLM, puis parse la réponse pour obtenir un objet structuré contenant l’évaluation (optimalité, problèmes, suggestions).
-- **Chaîne de génération de tests unitaires** : Prend en entrée une fonction Python et renvoie un test unitaire au format pytest. 
-- **Chaîne d’explication de tests** : Transforme un test Python en une explication claire et pédagogique destinée à un utilisateur humain.
-- **Chaîne de chat libre** : Permet une conversation libre. Contrairement aux autres chaînes, elle ne passe pas par un parser mais doit intégrer la mémoire pour assurer une continuité dans les échanges.
+- **Chaîne d'analyse de code** : utilise le prompt d'analyse, envoie la requête au LLM, puis structure la réponse.
+- **Chaîne de génération de tests unitaires** : prend en entrée une fonction Python et renvoie un test unitaire en `pytest`.
+- **Chaîne d'explication de tests** : transforme un test Python en une explication claire et pédagogique.
+- **Chaîne de chat libre** : permet une conversation libre avec continuité de contexte.
 
-Chaque chaîne doit être construite de manière simple et modulaire, afin que l’API puisse les invoquer directement sans logique supplémentaire.
+Pattern attendu pour les chaînes structurées :
 
-### La Mémoire (``src/memory/memory.py``)
+```python
+chain = prompt | llm.with_structured_output(MySchema)
+```
 
-La mémoire doit être implémentée de manière à gérer plusieurs utilisateurs en parallèle. L’idée est de disposer d’un store global qui associe chaque **session_id** à un historique de type ``InMemoryChatMessageHistory``.
+Chaque chaîne doit être construite de manière simple et modulaire, afin que l'API puisse les invoquer directement.
 
-Deux fonctions principales doivent être codées :
+### La Mémoire (`src/memory/memory.py`)
 
-- **``get_session_history(session_id)``** : Retourne l’historique de la session pour un utilisateur donné. Si aucune session n’existe encore pour cet utilisateur, une nouvelle instance d’historique doit être créée automatiquement.
-- **``get_user_history(session_id)``** : Permet de récupérer l’ensemble de l’historique de l’utilisateur sous forme de liste de dictionnaires, avec pour chaque message le rôle (human ou ai) et le contenu.
+La mémoire doit être implémentée de manière à gérer plusieurs utilisateurs en parallèle.
 
-> ⚠️ Points importants à respecter :
->
-> - Le session_id doit être unique par utilisateur (exemple : le nom d’utilisateur renvoyé par le JWT).
-> - La mémoire est non persistante : elle sera réinitialisée si l’application est relancée.
-> - Ce système doit être utilisé en particulier dans la chaîne de chat, avec ``RunnableWithMessageHistory``, pour assurer la continuité des conversations.
+Points importants à respecter :
 
-### Les APIs (``src/api/``)
+- le `thread_id` ou identifiant utilisateur doit être unique
+- une solution en mémoire suffit pour l'examen
+- le système doit permettre de conserver l'historique d'une conversation tant que le service tourne
 
-L'examen se repose sur deux APIs distinctes, toutes deux développées avec FastAPI et exécutées dans des conteneurs séparés :
+### Les APIs (`src/api/`)
 
-#### L’API d’authentification (``src/api/authentification/``)
+L'examen repose sur deux APIs distinctes, toutes deux développées avec FastAPI et exécutées dans des conteneurs séparés.
+
+#### L'API d'authentification (`src/api/authentification/`)
 
 Cette API est dédiée à la gestion de la sécurité et des utilisateurs. Elle doit permettre :
 
 - **L’inscription (signup)** : créer un nouvel utilisateur et l’enregistrer dans une base (ici simulée par une structure interne).
 - **La connexion (login)** : vérifier les identifiants permettant d’accéder aux autres services.
 
-Chaque endpoint doit être protégé et renvoyer des erreurs claires en cas de problème (utilisateur existant, identifiants incorrects). Le service dispose de son propre Dockerfile et de dépendances spécifiques.
+Chaque endpoint doit renvoyer des erreurs claires en cas de problème.
 
-#### L’API principale (``src/api/assistant/``)
+#### L'API principale (`src/api/assistant/`)
 
-Cette API constitue le cœur de l’assistant. Elle doit exposer plusieurs endpoints permettant d’interagir avec les chaînes LangChain définies dans ``src/core/``. Les fonctionnalités attendues sont :
+Cette API constitue le coeur de l'assistant. Elle doit exposer plusieurs endpoints permettant d'interagir avec les chaînes définies dans `src/core/`.
 
-- **Analyser un code Python (``/analyze``)** : Invoque la chaîne d’analyse et retourne l’évaluation du code.
-- **Générer un test unitaire (``/generate_test``)** : Appelle la chaîne de génération pour produire un test en pytest.
-- **Expliquer un test (``/explain_test``)** : Utilise la chaîne d’explication pour fournir une version pédagogique.
-- **Exécuter le pipeline complet (``/full_pipeline``)** : Cet endpoint combine plusieurs étapes en une seule requête. Le code soumis est d’abord analysé par la chaîne d’analyse.
-    - Si le résultat de l’analyse indique que le **code est non optimal**, le pipeline s’arrête immédiatement et l’API renvoie uniquement l’évaluation du code avec la liste des problèmes détectés et les suggestions d’amélioration.
-    - En revanche, si l’analyse conclut que le **code est optimal**, alors le pipeline poursuit automatiquement les étapes suivantes : génération d’un test unitaire puis explication pédagogique du test.
+Les fonctionnalités attendues sont :
 
-- **Chat conversationnel (``/chat``)** : Permet une discussion libre avec mémoire, en utilisant ``RunnableWithMessageHistory``.
-- **Historique (``/history``)** : Retourne l’ensemble des échanges pour un utilisateur.
+- **Analyser un code Python (`/analyze`)**
+- **Générer un test unitaire (`/generate_test`)**
+- **Expliquer un test (`/explain_test`)**
+- **Exécuter le pipeline complet (`/full_pipeline`)**
+- **Chat conversationnel (`/chat`)**
+- **Historique (`/history`)**
 
-> ⚠️ ***POINTS D'ATTENTION*** ⚠️ 
->
-> - Les résultats des endpoints **``/analyze``**, **``/generate_test``**, **``/explain_test``** et **``/full_pipeline``** doivent être **enregistrés dans la mémoire associée à l’utilisateur**, afin que chaque interaction soit conservée dans son historique.
-> - Les deux APIs doivent tourner dans **des conteneurs distincts (auth_service et main_service)**.
-> - **L’API principale dépend de l’API d’authentification** pour vérifier l’identité des utilisateurs.
-> - Une gestion rigoureuse des erreurs est indispensable : toutes les exceptions doivent être capturées et transformées en réponses HTTP explicites.
+Rôle de chaque endpoint :
 
-### Suivi et Monitoring avec LangSmith 
+- **`/analyze`** : reçoit un code Python et renvoie une analyse structurée du code
+- **`/generate_test`** : reçoit un code Python et renvoie un test unitaire `pytest`
+- **`/explain_test`** : reçoit un test et renvoie une explication pédagogique
+- **`/full_pipeline`** : enchaîne plusieurs étapes automatiquement pour éviter à l'utilisateur de les lancer une par une
+- **`/chat`** : permet une conversation libre avec mémoire entre plusieurs messages
+- **`/history`** : permet de consulter les échanges déjà enregistrés pour une session ou un utilisateur
 
-Pour améliorer la traçabilité et le suivi de l’assistant, il est nécessaire d’intégrer LangSmith, la plateforme de monitoring et de debug pour LangChain. 
+Points d'attention :
 
-- Tracer toutes les requêtes envoyées au LLM, avec leur prompt et leur réponse.
-- Visualiser les chaînes et leurs étapes (prompts, parsers, mémoire) dans une interface graphique.
-- Déboguer plus facilement en cas de problème de format ou d’erreur du modèle.
-- Comparer plusieurs versions de prompts ou de chaînes afin d’optimiser les performances de l’assistant.
+- les résultats des endpoints `/analyze`, `/generate_test`, `/explain_test` et `/full_pipeline` doivent être enregistrés dans l'historique associé à l'utilisateur
+- les deux APIs doivent tourner dans des conteneurs distincts
+- l'API principale dépend de l'API d'authentification pour vérifier l'identité des utilisateurs
+- une gestion rigoureuse des erreurs est indispensable : les exceptions doivent être transformées en réponses HTTP explicites
 
-Pour activer LangSmith, vous devez configurer vos variables d’environnement dans le fichier ``.env``.
+### Logique du pipeline complet
 
-### Interface Streamlit 
+L'endpoint `/full_pipeline` doit suivre cette logique :
 
-En plus des APIs, vous pouvez proposer une interface utilisateur développée avec Streamlit. Elle rend l’assistant beaucoup plus accessible et agréable à tester, en offrant une interaction directe sans passer par des requêtes API manuelles.
+1. analyser le code soumis
+2. si le code est jugé non optimal, arrêter le pipeline et renvoyer l'analyse
+3. sinon, générer un test unitaire
+4. puis expliquer ce test de manière pédagogique
 
-**Fonctionnalités attendues**
+Cette logique permet de montrer que l'application sait prendre une décision simple en fonction d'un premier résultat.
 
-- Authentification et Connexion
-- **Analyse** : Saisir un extrait de code Python et afficher le diagnostic du LLM
-- **Génération de tests** : Fournir une fonction Python et obtenir automatiquement un test unitaire en pytest.
-- **Explication de tests** : Coller un test unitaire et recevoir une explication détaillée et pédagogique.
-- **Pipeline complet** : Exécuter en une seule fois l’analyse → génération → explication.
-- **Chat libre** : Discuter avec l’assistant de manière naturelle, en utilisant la mémoire conversationnelle.
-- **Historique** : Visualiser toutes les interactions de la session en cours.
+### Suivi et Monitoring avec LangSmith
+
+Pour améliorer la traçabilité et le suivi de l'assistant, il est nécessaire d'intégrer LangSmith.
+
+LangSmith permet notamment de :
+
+- tracer toutes les requêtes envoyées au LLM
+- visualiser les chaînes et leurs étapes
+- déboguer plus facilement en cas d'erreur
+- comparer plusieurs versions de prompts ou de chaînes
+
+Une bonne habitude est de tester vos endpoints dans `/docs`, puis d'aller voir ensuite dans LangSmith :
+
+- le prompt réellement envoyé
+- la réponse du modèle
+- la chaîne ou l'agent utilisé
+- les éventuelles erreurs
+
+### Interface Streamlit
+
+En plus des APIs, vous pouvez proposer une interface utilisateur développée avec Streamlit.
+Elle reste **optionnelle**.
+
+Fonctionnalités possibles :
+
+- authentification et connexion
+- analyse de code
+- génération de tests
+- explication de tests
+- pipeline complet
+- chat libre
+- affichage de l'historique
 
 ### Déploiement avec Docker et Makefile
 
-L’ensemble du projet doit être entièrement conteneurisé afin de garantir une mise en place simple, reproductible et indépendante de l’environnement de développement. 
+L'ensemble du projet doit être conteneurisé afin de garantir une mise en place simple, reproductible et indépendante de l'environnement de développement.
 
-**Services attendus**
+Services attendus :
 
-- **auth** : l’API d’authentification, responsable de la gestion des utilisateurs
-- **main** : l’API principale, qui expose les fonctionnalités LangChain (analyse, génération de tests, explication, pipeline, chat, historique).
-- **streamlit** : l’interface utilisateur, permettant de tester facilement l’assistant via une interface graphique.
+- **auth** : l'API d'authentification
+- **main** : l'API principale
+- **streamlit** : l'interface utilisateur si vous choisissez de l'ajouter
 
-Chaque service dispose de son propre **Dockerfile** et d’un fichier **requirements.txt** spécifique.
+### Makefile
 
-**Makefile**
+Chaque service dispose de son propre `Dockerfile` et de ses dépendances.
 
-Le Makefile doit centraliser toutes les commandes utiles au projet. le déploiement complet du projet ne doit nécessiter qu’une seule commande :
+Le Makefile doit centraliser toutes les commandes utiles au projet. Lse déploiement complet du projet ne doit nécessiter qu’une seule commande :
 
 ```bash
 make
 ```
 
-> ⚠️ POINTS D'ATTENTION ⚠️
->
-> - Les ports doivent être exposés clairement et documentés dans le README.
-> - Assurez-vous que toutes les variables sensibles (clés API, configuration LangSmith, etc.) soient bien stockées dans le fichier ``.env`` et chargées par **docker-compose**.
+### README.md
 
-### README.md 
-
-Votre projet doit obligatoirement contenir un fichier **README.md** clair et structuré.
+Votre projet doit obligatoirement contenir un fichier `README.md` clair et structuré.
 Ce document doit expliquer le fonctionnement global de votre assistant, ainsi que la manière de le déployer et de le tester.
 
-- Étapes pour configurer ``.env``.
-- Commandes principales du Makefile (make up, make down, make logs).
-- Liste des endpoints disponibles et des ports (API auth et API assistant).
+Il doit notamment contenir :
 
-**Tests**
+- les étapes pour configurer le fichier `.env`
+- les commandes principales du `Makefile`
+- la liste des endpoints disponibles et des ports
 
-Instructions pour vérifier que l’API fonctionne correctement (scénarios de test à réaliser) :
+### Tests à réaliser (make tests)
+
+Instructions minimales à prévoir pour vérifier que l'API fonctionne correctement :
 
 - inscription
 - login
@@ -225,34 +281,25 @@ Instructions pour vérifier que l’API fonctionne correctement (scénarios de t
 - explication
 - pipeline complet
 - chat avec mémoire
-- affichage historique
+- affichage de l'historique
 
-
-## Rappels et Conseils
+## Rappels et conseils
 
 Avant de commencer, gardez en tête les points suivants :
 
-- **Organisation** : Respectez scrupuleusement la structure de projet fournie. Chaque fichier a un rôle précis (LLM, prompts, parsers, mémoire, API, etc.). Une bonne organisation facilitera la correction et la lecture de votre code.
-- **Variables d’environnement** : Ne mettez jamais vos clés en clair dans le code. Stockez-les dans le fichier ``.env``.
-- **Prompts** : Assurez-vous toujours d’utiliser les placeholders (**``{input}``**, **``{format_instructions}``**, etc.) et, pour le chat, le **MessagesPlaceholder** afin de bien gérer l’historique des échanges.
-- **Parsers** : Imposez toujours un retour au format JSON. C’est ce qui garantit que vos endpoints renverront des objets structurés et exploitables.
-- **Mémoire** : Utilisez un ``session_id`` unique pour éviter de mélanger les historiques. N’oubliez pas que la mémoire est en RAM et disparaît si vous redémarrez vos services.
-- L’API d’authentification doit être séparée de l’API principale.
-- **Docker** : Ne mettez dans vos Dockerfiles que ce qui est nécessaire. Copiez uniquement les fichiers utiles et exposez les bons ports.
-- **README** : Ce fichier doit être écrit comme si un correcteur n’avait aucune connaissance préalable de votre projet. Indiquez clairement comment lancer les services, et comment tester chaque endpoint.
-- **Tests** : prenez le temps de tester toutes les fonctionnalités (auth, analyse, génération, explication, pipeline, chat, historique). N’attendez pas la fin pour vérifier : testez au fur et à mesure.
+- **Organisation** : respectez scrupuleusement la structure fournie
+- **Variables d'environnement** : ne mettez jamais vos clés en clair dans le code
+- **Prompts** : utilisez les bons placeholders pour injecter les informations utiles
+- **Schémas structurés** : utilisez-les pour fiabiliser les sorties du modèle
+- **Mémoire** : utilisez un identifiant clair pour éviter de mélanger les historiques
+- **Docker** : ne mettez dans vos images que ce qui est nécessaire
+- **README** : écrivez-le comme si le lecteur ne connaissait pas votre projet
+- **Tests** : vérifiez les fonctionnalités au fur et à mesure
 
-> ⚠️ ASTUCE ⚠️
->
-> - Créez un environnement virtuel ``uv`` avant de commencer à conteneuriser votre projet.
-> - Dès que vous mettez en place une nouvelle chaîne, créez immédiatement son endpoint correspondant et testez-le pour vérifier son bon fonctionnement.
+## Rendu
 
-## Rendus
-
-N'oubliez pas d'uploader votre examen sous le format d'une archive zip ou tar, dans l'onglet **Mes Exams**, après avoir validé tous les exercices du module.
+N'oubliez pas d'uploader votre examen au format d'une archive zip ou tar, dans l'onglet **Mes Exams**, après avoir validé tous les exercices du module.
 
 > ⚠️ **IMPORTANT** ⚠️ : N’envoyez pas votre environnement virtuel (par ex. .venv ou uv) dans votre rendu. En cas de non-respect de cette consigne, un **repass automatique** de l’examen vous sera attribué.
 
-Félicitations, si vous avez atteint ce point, vous avez terminé le module sur LangChain et LLM Experimentation ! 🎉.
-
-
+Félicitations ! Si vous avez atteint ce point, vous avez terminé le module sur LangChain et LLM Experimentation ! 🎉.

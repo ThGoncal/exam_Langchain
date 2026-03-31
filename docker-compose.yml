@@ -1,0 +1,46 @@
+services:
+  auth:
+
+    ports:
+      - "8001:8001"
+    networks:
+      - app_network
+
+  main:
+
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth
+    networks:
+      - app_network
+    env_file:
+      - .env
+
+  streamlit:
+
+    ports:
+      - "8501:8501"
+    depends_on:
+      - auth
+      - main
+    networks:
+      - app_network
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      - auth
+      - main
+    environment:
+      RUN_CONTAINER_TESTS: "true"
+      AUTH_URL: "http://auth:8001"
+      API_URL: "http://main:8000"
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
